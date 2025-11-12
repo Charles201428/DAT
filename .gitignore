@@ -1,0 +1,52 @@
+# Python cache and build artifacts
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.dll
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.tox/
+.coverage
+.coverage.*
+coverage.xml
+dist/
+build/
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# IDE / Editor files
+.vscode/
+.idea/
+*.iml
+.DS_Store
+Thumbs.db
+
+# Project secrets and local state
+.env
+.env.*
+*.key
+*.pem
+*.crt
+*.csr
+*.log
+
+# Local data / artifacts
+treasury.db
+*.db
+*.sqlite
+*.sqlite3
+news_text/
+positive_DAT/
+tmp_mstr/
+data/
+logs/
+
+

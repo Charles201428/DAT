@@ -1,0 +1,2 @@
+Getting Started on Lighter: Ethereum’s High-Speed Perps L2
+This purpose-built L2 for trading perps atop Ethereum is gaining steam.

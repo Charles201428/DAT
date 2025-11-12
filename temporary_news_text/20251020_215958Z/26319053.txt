@@ -1,0 +1,2 @@
+Solana Founder Unveils ‘Percolator’ Perp DEX – A Direct Shot at Aster and Hyperliquid
+Solana co-founder Anatoly Yakovenko has unveiled the Percolator perp DEX, a sharded perpetual futures exchange for the Solana network, featuring a two-program architecture designed for performance and CEX-level execution speeds amid declining volume on other Solana-based DEXs.

@@ -1,0 +1,2 @@
+Coinbase’s Base App says users may see zero balances for some coins amid AWS outage
+Base App is meant to be Coinbase's answer for combining social networking, mini-apps, chat, payments, and trading.
