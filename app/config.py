@@ -38,6 +38,7 @@ class Settings(BaseSettings):
 
     # OpenAI
     openai_api_key: str | None = Field(default=None, alias="OPENAI_API_KEY")
+    openai_classify_workers: int = Field(default=10, alias="OPENAI_CLASSIFY_WORKERS")  # Parallel workers for classification
 
     # Local storage for raw news texts
     news_text_dir: str = Field(default="news_text", alias="NEWS_TEXT_DIR")
@@ -49,6 +50,9 @@ class Settings(BaseSettings):
     # Alpha Vantage
     alphavantage_api_key: str | None = Field(default=None, alias="ALPHAVANTAGE_API_KEY")
     alphavantage_base: str = Field(default="https://www.alphavantage.co/query", alias="ALPHAVANTAGE_BASE")
+
+    # CoinGecko
+    coingecko_api_key: str | None = Field(default=None, alias="CG_API_KEY")
 
 
 def get_settings() -> Settings:

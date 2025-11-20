@@ -75,7 +75,7 @@ async def list_events(
 
 
 @router.post("/ingest")
-async def trigger_ingest(hours: int = Query(default=24, ge=1, le=168)) -> dict[str, object]:
+async def trigger_ingest(hours: int = Query(default=24, ge=1, le=720)) -> dict[str, object]:
     result = await ingest_cryptopanic(hours=hours)
     return result
 

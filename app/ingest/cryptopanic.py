@@ -93,7 +93,13 @@ async def ingest_cryptopanic(hours: int = 24) -> dict[str, Any]:
     async with httpx.AsyncClient(headers=headers) as client:
         inserted = 0
         next_url = settings.cryptopanic_base
-        pages_left = max(1, getattr(settings, "cryptopanic_pages", 1))
+        # For longer time ranges, allow more pages (estimate ~20 items/page, so 30 days = ~720 hours / 24 = 30 days worth)
+        # Allow up to 100 pages for 30-day fetches, otherwise use configured value
+        default_pages = max(1, getattr(settings, "cryptopanic_pages", 1))
+        if hours >= 168:  # 7+ days
+            pages_left = max(default_pages, 100)  # Allow up to 100 pages for long ranges
+        else:
+            pages_left = default_pages
         # Ensure batch directory exists
         try:
             batch_dir.mkdir(parents=True, exist_ok=True)

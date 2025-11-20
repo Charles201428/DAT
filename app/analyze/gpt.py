@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any
 
 from openai import OpenAI
@@ -164,44 +165,77 @@ async def classify_docs(session: AsyncSession, limit: int = 20) -> list[dict[str
     return results
 
 
+def _classify_single_file(p: Path) -> dict[str, Any]:
+    """Classify a single file. Used for parallel processing.
+    Creates its own OpenAI client (thread-safe per OpenAI docs).
+    """
+    client = _make_client()
+    try:
+        text = p.read_text(encoding="utf-8", errors="ignore")
+    except Exception as exc:  # pragma: no cover
+        logger.warning("skip file %s: %s", p, exc)
+        return {"file": p.name, "is_dat": False}
+    try:
+        completion = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": CLASSIFY_SYSTEM_PROMPT},
+                {"role": "user", "content": text[:12000]},
+            ],
+            temperature=0.0,
+            response_format={"type": "json_object"},
+        )
+        content = completion.choices[0].message.content
+        data: dict[str, Any] = json.loads(content)
+        is_dat = bool(data.get("is_dat"))
+    except Exception as exc:  # pragma: no cover
+        logger.warning("GPT classification failed for %s: %s", p.name, exc)
+        is_dat = False
+    return {"file": p.name, "is_dat": is_dat}
+
+
 def classify_texts_from_dir(
     dir_path: Path,
     *,
     save_jsonl: bool = True,
     limit_files: int | None = None,
+    workers: int | None = None,
 ) -> dict[str, Any]:
     """Classify .txt files under dir_path using GPT, optionally saving JSONL.
 
     When limit_files is provided, only the first N files (alphabetically) are processed.
+    Uses parallel workers (default from config) to speed up processing.
     """
-    client = _make_client()
+    settings = get_settings()
+    num_workers = workers if workers is not None else settings.openai_classify_workers
+    
     files = sorted([p for p in dir_path.glob("*.txt") if p.is_file()])
     if limit_files is not None:
         files = files[: max(0, int(limit_files))]
+    
     results: list[dict[str, Any]] = []
-    for p in files:
-        try:
-            text = p.read_text(encoding="utf-8", errors="ignore")
-        except Exception as exc:  # pragma: no cover
-            logger.warning("skip file %s: %s", p, exc)
-            continue
-        try:
-            completion = client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[
-                    {"role": "system", "content": CLASSIFY_SYSTEM_PROMPT},
-                    {"role": "user", "content": text[:12000]},
-                ],
-                temperature=0.0,
-                response_format={"type": "json_object"},
-            )
-            content = completion.choices[0].message.content
-            data: dict[str, Any] = json.loads(content)
-            is_dat = bool(data.get("is_dat"))
-        except Exception as exc:  # pragma: no cover
-            logger.warning("GPT classification failed for %s: %s", p.name, exc)
-            is_dat = False
-        results.append({"file": p.name, "is_dat": is_dat})
+    
+    # Use ThreadPoolExecutor for parallel processing
+    # OpenAI client is thread-safe, but creating per-task avoids any potential issues
+    with ThreadPoolExecutor(max_workers=num_workers) as executor:
+        # Submit all tasks
+        future_to_file = {
+            executor.submit(_classify_single_file, p): p
+            for p in files
+        }
+        
+        # Collect results as they complete
+        for future in as_completed(future_to_file):
+            try:
+                result = future.result()
+                results.append(result)
+            except Exception as exc:  # pragma: no cover
+                file_path = future_to_file[future]
+                logger.warning("Classification task failed for %s: %s", file_path, exc)
+                results.append({"file": file_path.name, "is_dat": False})
+    
+    # Sort results by filename to maintain consistent ordering
+    results.sort(key=lambda x: x["file"])
 
     saved_file: str | None = None
     if save_jsonl:
