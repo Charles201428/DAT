@@ -345,10 +345,10 @@ async def enrich_folder_with_coingecko(
             prices: dict[str, float | None] = {}
             
             for key, target_date in dates_to_fetch.items():
-                # Don't fetch future dates or dates beyond yesterday (CoinGecko limitation)
+                # Don't fetch future dates beyond today (CoinGecko limitation)
                 target_date_only = target_date.date()
-                if target_date_only > yesterday:
-                    # Skip today and future dates (CoinGecko usually doesn't have today's data)
+                if target_date_only > today:
+                    # Skip future dates beyond today
                     prices[key] = None
                     continue
                 # Skip dates that are too old (CoinGecko free tier limitation)
@@ -387,10 +387,15 @@ async def enrich_folder_with_coingecko(
             ann_plus_1_p = prices.get("ann_plus_1")
             ann_plus_7_p = prices.get("ann_plus_7")
             
-            _set("D Token Perf", _pct(ann_minus_1_p, ann_p))
+            # Forward-looking performance (AFTER announcement)
             _set("1D Token Perf", _pct(ann_p, ann_plus_1_p) if ann_plus_1_p is not None else "N/A")
             _set("7D Token Perf", _pct(ann_p, ann_plus_7_p) if ann_plus_7_p is not None else "N/A")
-            _set("-7D Token Perf", _pct(ann_minus_7_p, ann_minus_1_p))
+            
+            # Day-of-announcement performance (D-1 to D)
+            _set("D Token Perf", _pct(ann_minus_1_p, ann_p))
+            
+            # Backward-looking performance (BEFORE announcement)
+            _set("-7D Token Perf", _pct(ann_minus_7_p, ann_p))
             _set("-7 to -1D Token Perf", _pct(ann_minus_7_p, ann_minus_1_p))
 
             # Write back in place

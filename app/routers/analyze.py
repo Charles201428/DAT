@@ -394,8 +394,13 @@ async def dedup(
 async def json_to_csv(
     dir: str = Query(..., description="Folder containing JSON files to combine"),
     output_file: str | None = Query(default=None, description="Output CSV filename (default: {dir_name}_combined.csv)"),
+    exclude_no_token: bool = Query(default=True, description="Exclude entries where Token is N/A"),
 ) -> dict[str, object]:
-    """Combine all JSON files in a directory into a single CSV file."""
+    """Combine all JSON files in a directory into a single CSV file.
+    
+    Excludes entries where Token is N/A by default.
+    Adds URL column from corresponding .txt or .orig.txt files.
+    """
     target_dir = Path(dir)
     if not target_dir.exists():
         raise HTTPException(status_code=400, detail=f"directory not found: {target_dir}")
@@ -409,9 +414,56 @@ async def json_to_csv(
     all_data: list[dict[str, Any]] = []
     all_fields: set[str] = set()
     
+    def _extract_url_from_txt(json_file: Path) -> str:
+        """Extract URL from corresponding .txt or .orig.txt file.
+        Checks both main folder and _dedup_trash folder.
+        """
+        # Get base name (remove .orig.json or .json)
+        # For "27211790.orig.json", stem is "27211790.orig", we want "27211790"
+        base_name = json_file.stem
+        if base_name.endswith(".orig"):
+            base_name = base_name[:-5]  # Remove ".orig"
+        
+        parent_dir = json_file.parent
+        trash_dir = parent_dir / "_dedup_trash"
+        
+        # List of possible txt file locations to check (in order of preference)
+        txt_candidates = [
+            json_file.with_suffix(".orig.txt"),  # Same name with .orig.txt
+            json_file.with_suffix(".txt"),  # Same name with .txt
+            parent_dir / f"{base_name}.orig.txt",  # Base name with .orig.txt
+            parent_dir / f"{base_name}.txt",  # Base name with .txt
+            trash_dir / f"{base_name}.orig.txt",  # In trash with .orig.txt
+            trash_dir / f"{base_name}.txt",  # In trash with .txt
+            trash_dir / json_file.with_suffix(".orig.txt").name,  # Original name in trash
+            trash_dir / json_file.with_suffix(".txt").name,  # Original name in trash
+        ]
+        
+        for txt_file in txt_candidates:
+            if txt_file.exists():
+                try:
+                    content = txt_file.read_text(encoding="utf-8", errors="ignore")
+                    lines = content.splitlines()
+                    if lines and lines[0].startswith("URL:"):
+                        return lines[0].split("URL:", 1)[1].strip()
+                except Exception as exc:
+                    logger.debug("Failed to read URL from %s: %s", txt_file, exc)
+                    continue
+        return ""
+    
     for json_file in json_files:
         try:
             data = json.loads(json_file.read_text(encoding="utf-8"))
+            
+            # Filter out entries where Token is N/A if requested
+            token_value = (data.get("Token") or "").strip().upper()
+            if exclude_no_token and (not token_value or token_value == "N/A"):
+                continue
+            
+            # Add URL from corresponding text file
+            url = _extract_url_from_txt(json_file)
+            data["URL"] = url
+            
             all_data.append(data)
             all_fields.update(data.keys())
         except Exception as exc:
@@ -419,10 +471,13 @@ async def json_to_csv(
             continue
     
     if not all_data:
-        raise HTTPException(status_code=400, detail="no valid JSON data found")
+        raise HTTPException(status_code=400, detail="no valid JSON data found (or all filtered out)")
     
-    # Sort fields for consistent column order
+    # Sort fields for consistent column order, but put URL first
     sorted_fields = sorted(all_fields)
+    if "URL" in sorted_fields:
+        sorted_fields.remove("URL")
+        sorted_fields.insert(0, "URL")
     
     # Determine output filename
     if output_file:
@@ -447,4 +502,5 @@ async def json_to_csv(
         "rows": len(all_data),
         "columns": len(sorted_fields),
         "fields": sorted_fields,
+        "excluded_no_token": exclude_no_token,
     }

@@ -131,11 +131,14 @@ async def enrich_folder_with_alpha(dir_path: Path, *, as_of: datetime | None = N
                     series = (data_json or {}).get("Time Series (Daily)") or {}
                     stock_cache[ticker] = series
 
-                # Anchor on announcement date; compare to prior 1D/7D/30D
+                # Anchor on announcement date
                 d = _nearest_close(series, ann_date)
-                d1 = _nearest_close(series, ann_date - timedelta(days=1))
-                d7 = _nearest_close(series, ann_date - timedelta(days=7))
-                d30 = _nearest_close(series, ann_date - timedelta(days=30))
+                d_minus_1 = _nearest_close(series, ann_date - timedelta(days=1))
+                d_minus_7 = _nearest_close(series, ann_date - timedelta(days=7))
+                d_minus_30 = _nearest_close(series, ann_date - timedelta(days=30))
+                d_plus_1 = _nearest_close(series, ann_date + timedelta(days=1))
+                d_plus_7 = _nearest_close(series, ann_date + timedelta(days=7))
+                d_plus_30 = _nearest_close(series, ann_date + timedelta(days=30))
 
                 def _set(k: str, v: str):
                     cur = data.get(k)
@@ -143,16 +146,19 @@ async def enrich_folder_with_alpha(dir_path: Path, *, as_of: datetime | None = N
                         data[k] = v
 
                 _set("Share Price on Ann. Date", f"{d:.2f}" if d is not None else "N/A")
-                _set("1D Stock Perf", _pct(d, d1))
-                _set("7D Stock Perf", _pct(d, d7))
-                _set("30D Stock Perf", _pct(d, d30))
-                # Trailing windows ending D-1
-                dm1 = d1
-                dm7 = _nearest_close(series, ann_date - timedelta(days=7))
-                dm30 = _nearest_close(series, ann_date - timedelta(days=30))
-                _set("-7D Stock Perf", _pct(dm7, dm1))
-                _set("-7 to -1D Stock Perf", _pct(dm7, dm1))
-                _set("-30D Stock Perf (to D-1)", _pct(dm30, dm1))
+                
+                # Forward-looking performance (AFTER announcement)
+                _set("1D Stock Perf", _pct(d, d_plus_1) if d_plus_1 is not None else "N/A")
+                _set("7D Stock Perf", _pct(d, d_plus_7) if d_plus_7 is not None else "N/A")
+                _set("30D Stock Perf", _pct(d, d_plus_30) if d_plus_30 is not None else "N/A")
+                
+                # Day-of-announcement performance (D-1 to D)
+                _set("D Stock Perf", _pct(d_minus_1, d))
+                
+                # Backward-looking performance (BEFORE announcement)
+                _set("-7D Stock Perf", _pct(d_minus_7, d))
+                _set("-7 to -1D Stock Perf", _pct(d_minus_7, d_minus_1))
+                _set("-30D Stock Perf (to D-1)", _pct(d_minus_30, d_minus_1))
 
             # TOKEN: DIGITAL_CURRENCY_DAILY (USD)
             if token and ann_date:
@@ -168,10 +174,12 @@ async def enrich_folder_with_alpha(dir_path: Path, *, as_of: datetime | None = N
                     series_t = (data_t or {}).get("Time Series (Digital Currency Daily)") or {}
                     token_cache[token] = series_t
 
-                # Anchor on announcement date; compare to prior 1D/7D
+                # Anchor on announcement date
                 td = _nearest_close(series_t, ann_date)
-                td1 = _nearest_close(series_t, ann_date - timedelta(days=1))
-                td7 = _nearest_close(series_t, ann_date - timedelta(days=7))
+                td_minus_1 = _nearest_close(series_t, ann_date - timedelta(days=1))
+                td_minus_7 = _nearest_close(series_t, ann_date - timedelta(days=7))
+                td_plus_1 = _nearest_close(series_t, ann_date + timedelta(days=1))
+                td_plus_7 = _nearest_close(series_t, ann_date + timedelta(days=7))
 
                 def _set_t(k: str, v: str):
                     cur = data.get(k)
@@ -179,13 +187,17 @@ async def enrich_folder_with_alpha(dir_path: Path, *, as_of: datetime | None = N
                         data[k] = v
 
                 _set_t("Token Price on Ann. Date", f"{td:.2f}" if td is not None else "N/A")
-                _set_t("1D Token Perf", _pct(td, td1))
-                _set_t("7D Token Perf", _pct(td, td7))
-                # Trailing windows ending D-1 for token
-                tdm1 = td1
-                tdm7 = _nearest_close(series_t, ann_date - timedelta(days=7))
-                _set_t("-7D Token Perf", _pct(tdm7, tdm1))
-                _set_t("-7 to -1D Token Perf", _pct(tdm7, tdm1))
+                
+                # Forward-looking performance (AFTER announcement)
+                _set_t("1D Token Perf", _pct(td, td_plus_1) if td_plus_1 is not None else "N/A")
+                _set_t("7D Token Perf", _pct(td, td_plus_7) if td_plus_7 is not None else "N/A")
+                
+                # Day-of-announcement performance (D-1 to D)
+                _set_t("D Token Perf", _pct(td_minus_1, td))
+                
+                # Backward-looking performance (BEFORE announcement)
+                _set_t("-7D Token Perf", _pct(td_minus_7, td))
+                _set_t("-7 to -1D Token Perf", _pct(td_minus_7, td_minus_1))
 
             # Write back in place
             p.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
