@@ -45,6 +45,7 @@ treasury.db
 *.sqlite3
 news_text/
 positive_DAT/
+!positive_DAT/**/*.csv
 tmp_mstr/
 data/
 logs/
