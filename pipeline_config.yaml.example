@@ -1,0 +1,46 @@
+# Pipeline Configuration
+# Copy this file to pipeline_config.yaml and customize as needed
+
+# Time period for news ingestion
+ingestion:
+  hours: 720  # Number of hours to look back (1-720, default: 24)
+
+# Step 2: Classification settings
+classification:
+  limit_files: null  # Limit number of files to process (null = all)
+  workers: 10  # Number of parallel workers for GPT classification
+
+# Step 3: Formatting settings
+formatting:
+  limit_files: null  # Limit number of files to process (null = all)
+  orig_only: true  # Only process .orig.txt files
+
+# Step 4: Enrichment settings
+enrichment:
+  limit_files: null  # Limit number of files to process (null = all)
+  as_of: null  # ISO timestamp for enrichment (null = now UTC), e.g., "2025-11-20T00:00:00Z"
+
+# Step 5: Deduplication settings
+deduplication:
+  keep: "largest"  # Strategy: largest, newest, most_filled, or first
+  remove_duplicates: false  # Delete duplicates instead of moving to _dedup_trash
+  require_all: true  # Require stock, token, and date to deduplicate
+  include_related: true  # Also move/delete sibling files (e.g., .orig.txt)
+
+# Step 6: CSV Export settings
+export:
+  output_file: null  # Output CSV filename (null = {dir_name}_combined.csv)
+  exclude_no_token: true  # Exclude entries where Token is N/A
+
+# Directory settings (optional - defaults from main config)
+directories:
+  news_text_dir: "news_text"  # Base directory for ingested news
+  positive_text_dir: "positive_DAT"  # Base directory for positive classifications
+
+# Skip steps (useful for resuming from a specific step)
+skip_steps:
+  - null  # Set to step numbers to skip, e.g., [1, 2] to skip ingestion and classification
+
+# Continue from existing directory (skip ingestion if directory exists)
+continue_from_dir: null  # Set to directory path, e.g., "news_text/20251120_190823Z"
+

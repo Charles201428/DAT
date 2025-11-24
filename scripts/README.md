@@ -2,6 +2,23 @@
 
 This directory contains standalone Python scripts that replicate the functionality of the API endpoints. These scripts can be run independently and support both YAML config files and command-line arguments.
 
+## Quick Start: Pipeline Script
+
+For automated end-to-end processing, use the **pipeline script** that runs all 6 steps sequentially:
+
+```bash
+# Simple usage (uses defaults)
+python scripts/pipeline.py
+
+# With custom pipeline config
+python scripts/pipeline.py --pipeline-config pipeline_config.yaml
+
+# With both main config and pipeline config
+python scripts/pipeline.py --config config.yaml --pipeline-config pipeline_config.yaml
+```
+
+See [Pipeline Configuration](#pipeline-configuration) below for details.
+
 ## Setup
 
 1. **Install dependencies** (if not already installed):
@@ -19,7 +36,13 @@ This directory contains standalone Python scripts that replicate the functionali
 
 ## Scripts Overview
 
-The scripts follow a pipeline workflow where each step takes the output directory from the previous step:
+### Pipeline Script (Recommended)
+
+**`pipeline.py`** - Runs all 6 steps automatically in sequence. See [Pipeline Configuration](#pipeline-configuration) section.
+
+### Individual Scripts
+
+The individual scripts follow a pipeline workflow where each step takes the output directory from the previous step:
 
 1. **`01_ingest.py`** - Ingest news from CryptoPanic API
 2. **`02_classify.py`** - Binary classification of DAT events using GPT
@@ -78,6 +101,48 @@ python scripts/05_dedup.py --input-dir positive_DAT/20251120_190823Z --keep larg
 
 # Export with custom filename
 python scripts/06_export_csv.py --input-dir positive_DAT/20251120_190823Z --output-file custom_export.csv
+```
+
+## Pipeline Configuration
+
+The pipeline script uses a dedicated `pipeline_config.yaml` file (see `pipeline_config.yaml.example` for template) that allows you to configure:
+
+- **Time period** for ingestion (hours to look back)
+- **Step-specific settings** (limits, workers, deduplication strategy, etc.)
+- **Skip steps** for resuming from a specific point
+- **Continue from existing directory** to skip ingestion
+
+Example `pipeline_config.yaml`:
+
+```yaml
+ingestion:
+  hours: 720  # Last 30 days
+
+classification:
+  workers: 10
+  limit_files: null  # Process all files
+
+enrichment:
+  limit_files: null
+
+deduplication:
+  keep: "largest"
+  remove_duplicates: false
+
+export:
+  exclude_no_token: true
+```
+
+### Advanced Pipeline Features
+
+**Skip Steps**: Resume from a specific step
+```yaml
+skip_steps: [1, 2]  # Skip ingestion and classification
+```
+
+**Continue from Directory**: Skip ingestion and use existing directory
+```yaml
+continue_from_dir: "news_text/20251120_190823Z"
 ```
 
 ## Configuration
