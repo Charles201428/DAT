@@ -58,6 +58,22 @@ uvicorn app.main:app --reload
 
 The API will be available at `http://localhost:8000`
 
+## Standalone Scripts
+
+For command-line usage without running the API server, see the [scripts/](scripts/) directory. The scripts support YAML config files and can be run independently:
+
+```bash
+# Complete pipeline example
+python scripts/01_ingest.py --hours 720
+python scripts/02_classify.py --input-dir news_text/20251120_190823Z
+python scripts/03_format.py --input-dir positive_DAT/20251120_190823Z
+python scripts/04_enrich.py --input-dir positive_DAT/20251120_190823Z
+python scripts/05_dedup.py --input-dir positive_DAT/20251120_190823Z
+python scripts/06_export_csv.py --input-dir positive_DAT/20251120_190823Z
+```
+
+See [scripts/README.md](scripts/README.md) for detailed documentation.
+
 ## API Endpoints
 
 ### Ingestion

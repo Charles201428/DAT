@@ -1,0 +1,48 @@
+# Crypto Treasury Parser Configuration
+# Copy this file to config.yaml and fill in your values
+
+# API Keys
+api_keys:
+  cryptopanic_token: ""  # Your CryptoPanic API token
+  openai_api_key: ""     # Your OpenAI API key
+  alphavantage_api_key: ""  # Your Alpha Vantage API key
+  coingecko_api_key: ""  # Your CoinGecko API key (Pro keys start with CG-)
+
+# CryptoPanic Settings
+cryptopanic:
+  base: "https://cryptopanic.com/api/growth/v2/posts/"
+  public: true
+  filter: null  # Optional: rising, hot, bullish, bearish, important, saved, lol
+  currencies: null  # Optional: comma-separated currency codes
+  kind: "all"  # news, media, or all
+  size: 50
+  pages: 1
+  require_keyword: null  # Optional: local keyword filter (e.g., "treasury", "bitcoin")
+
+# OpenAI Settings
+openai:
+  classify_workers: 10  # Number of parallel workers for classification
+
+# Directories
+directories:
+  news_text_dir: "news_text"
+  positive_text_dir: "positive_DAT"
+
+# Alpha Vantage Settings
+alphavantage:
+  base: "https://www.alphavantage.co/query"
+
+# CoinGecko Settings
+coingecko:
+  base: "https://api.coingecko.com/api/v3"  # Auto-switches to pro-api.coingecko.com for Pro keys
+
+# Application Settings
+app:
+  env: "dev"
+  log_level: "INFO"
+  user_agent: "CryptoTreasuryBot/0.1 (you@example.com)"
+
+# Database
+database:
+  dsn: "sqlite+aiosqlite:///./treasury.db"  # SQLite for local dev, or Postgres DSN
+
