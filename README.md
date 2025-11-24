@@ -60,10 +60,35 @@ The API will be available at `http://localhost:8000`
 
 ## Standalone Scripts
 
-For command-line usage without running the API server, see the [scripts/](scripts/) directory. The scripts support YAML config files and can be run independently:
+For command-line usage without running the API server, see the [scripts/](scripts/) directory. The scripts support YAML config files and can be run independently.
+
+### Pipeline Script (Recommended)
+
+For automated end-to-end processing, use the **pipeline script** that runs all 6 steps sequentially:
 
 ```bash
-# Complete pipeline example
+# Simple usage (uses defaults from pipeline_config.yaml)
+python scripts/pipeline.py
+
+# With custom pipeline config
+python scripts/pipeline.py --pipeline-config pipeline_config.yaml
+
+# With both main config and pipeline config
+python scripts/pipeline.py --config config.yaml --pipeline-config pipeline_config.yaml
+```
+
+Create `pipeline_config.yaml` from `pipeline_config.yaml.example` to customize:
+- Time period for ingestion (hours to look back)
+- Step-specific settings (limits, workers, deduplication strategy)
+- Skip steps for resuming from a specific point
+- Continue from existing directory
+
+### Individual Scripts
+
+You can also run each step individually:
+
+```bash
+# Step-by-step example
 python scripts/01_ingest.py --hours 720
 python scripts/02_classify.py --input-dir news_text/20251120_190823Z
 python scripts/03_format.py --input-dir positive_DAT/20251120_190823Z
