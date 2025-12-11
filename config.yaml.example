@@ -1,48 +1,41 @@
-# Crypto Treasury Parser Configuration
-# Copy this file to config.yaml and fill in your values
+# Main configuration file for Crypto Treasury Parser scripts
+# Copy this to config.yaml and customize as needed
 
-# API Keys
-api_keys:
-  cryptopanic_token: ""  # Your CryptoPanic API token
-  openai_api_key: ""     # Your OpenAI API key
-  alphavantage_api_key: ""  # Your Alpha Vantage API key
-  coingecko_api_key: ""  # Your CoinGecko API key (Pro keys start with CG-)
+# API keys are loaded from environment variables (.env file)
+# This config file is for script-specific settings
 
-# CryptoPanic Settings
-cryptopanic:
-  base: "https://cryptopanic.com/api/growth/v2/posts/"
-  public: true
-  filter: null  # Optional: rising, hot, bullish, bearish, important, saved, lol
-  currencies: null  # Optional: comma-separated currency codes
-  kind: "all"  # news, media, or all
-  size: 50
-  pages: 1
-  require_keyword: null  # Optional: local keyword filter (e.g., "treasury", "bitcoin")
+# Ingestion settings
+ingest:
+  hours: 24  # Hours to look back when ingesting news
 
-# OpenAI Settings
-openai:
-  classify_workers: 10  # Number of parallel workers for classification
+# Classification settings
+classify:
+  limit_files: null  # null = process all files
+  workers: 5  # Number of parallel workers for GPT classification
+  export_positives: true  # Automatically export positive classifications
 
-# Directories
-directories:
-  news_text_dir: "news_text"
-  positive_text_dir: "positive_DAT"
+# Formatting settings
+format:
+  limit_files: null  # null = process all files
+  orig_only: true  # Only process .orig.txt files (not .txt)
 
-# Alpha Vantage Settings
-alphavantage:
-  base: "https://www.alphavantage.co/query"
+# Enrichment settings
+enrich:
+  limit_files: null  # null = process all files
+  as_of: null  # ISO datetime string (null = use current time)
+  enrich_stock: true  # Enrich stock prices
+  enrich_token: true  # Enrich token prices
 
-# CoinGecko Settings
-coingecko:
-  base: "https://api.coingecko.com/api/v3"  # Auto-switches to pro-api.coingecko.com for Pro keys
+# Deduplication settings
+dedup:
+  keep: largest  # Strategy: largest, newest, most_filled, first
+  require_all: true  # Require stock, token, and date to deduplicate
+  remove_duplicates: false  # Delete duplicates (false = move to trash)
+  include_related: true  # Also move/delete related files (.orig.txt, etc.)
+  dry_run: false  # Only report, don't modify files
 
-# Application Settings
-app:
-  env: "dev"
-  log_level: "INFO"
-  user_agent: "CryptoTreasuryBot/0.1 (you@example.com)"
-
-# Database
-database:
-  dsn: "sqlite+aiosqlite:///./treasury.db"  # SQLite for local dev, or Postgres DSN
+# CSV export settings
+export_csv:
+  output_file: null  # null = auto-generate filename
+  exclude_no_token: true  # Exclude entries where Token is N/A
 

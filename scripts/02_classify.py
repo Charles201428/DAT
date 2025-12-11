@@ -1,114 +1,86 @@
-#!/usr/bin/env python3
-"""Step 2: Binary classification of DAT events using GPT.
-
-Usage:
-    python scripts/02_classify.py --input-dir DIR [--output-dir DIR] [--limit LIMIT] [--workers WORKERS] [--config CONFIG_FILE]
-
-Example:
-    python scripts/02_classify.py --input-dir news_text/20251120_190823Z
-    python scripts/02_classify.py --input-dir news_text/20251120_190823Z --limit 100 --workers 10
-"""
+"""Step 2: Classify text files as DAT events using GPT."""
 from __future__ import annotations
 
 import argparse
-import os
-import shutil
-import sys
+import logging
 from pathlib import Path
-
-# Add parent directory to path to import app modules
-sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from app.analyze.gpt import classify_texts_from_dir
 from app.config import get_settings
-from scripts.config_loader import get_settings_from_config
+from scripts.config_loader import load_config
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 
-def main():
-    parser = argparse.ArgumentParser(description="Classify news articles as DAT events")
-    parser.add_argument(
-        "--input-dir",
-        type=str,
-        required=True,
-        help="Directory containing .txt files to classify",
-    )
-    parser.add_argument(
-        "--output-dir",
-        type=str,
-        default=None,
-        help="Directory to save positive classifications (default: positive_DAT/{input_dir_name})",
-    )
-    parser.add_argument(
-        "--limit",
-        type=int,
-        default=None,
-        help="Limit number of files to process",
-    )
-    parser.add_argument(
-        "--workers",
-        type=int,
-        default=None,
-        help="Number of parallel workers (default: from config)",
-    )
-    parser.add_argument(
-        "--config",
-        type=str,
-        default=None,
-        help="Path to YAML config file (default: config.yaml or .env)",
-    )
-    
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Classify text files as DAT events")
+    parser.add_argument("--input-dir", type=str, required=True, help="Directory containing .txt files")
+    parser.add_argument("--limit", type=int, help="Limit number of files to process")
+    parser.add_argument("--workers", type=int, help="Number of parallel workers")
+    parser.add_argument("--no-save", action="store_true", help="Don't save JSONL results")
+    parser.add_argument("--config", type=str, help="Path to config YAML file")
     args = parser.parse_args()
     
-    # Load config if provided
-    if args.config:
-        config = get_settings_from_config(args.config)
-        for key, value in config.items():
-            os.environ[key] = str(value)
+    # Load config
+    config = load_config(args.config)
+    classify_config = config.get("classify", {})
     
+    # Get settings
+    settings = get_settings()
+    
+    # Determine input directory
     input_dir = Path(args.input_dir)
     if not input_dir.exists():
-        print(f"Error: Input directory does not exist: {input_dir}")
-        sys.exit(1)
+        # Try relative to news_text_dir
+        settings = get_settings()
+        input_dir = Path(settings.news_text_dir) / args.input_dir
+        if not input_dir.exists():
+            raise FileNotFoundError(f"Directory not found: {args.input_dir}")
     
-    # Determine output directory
-    settings = get_settings()
-    if args.output_dir:
-        output_dir = Path(args.output_dir)
-    else:
-        output_dir = Path(settings.positive_text_dir) / input_dir.name
+    # Get parameters
+    limit_files = args.limit or classify_config.get("limit_files")
+    workers = args.workers or classify_config.get("workers") or settings.openai_classify_workers
+    save_jsonl = not args.no_save
     
-    print(f"Classifying files in: {input_dir}")
-    print(f"Output directory: {output_dir}")
+    logger.info(f"Classifying files in {input_dir}...")
+    logger.info(f"Limit: {limit_files}, Workers: {workers}, Save JSONL: {save_jsonl}")
     
-    # Run classification
-    result = classify_texts_from_dir(
-        input_dir,
-        save_jsonl=True,
-        limit_files=args.limit,
-        workers=args.workers,
-    )
-    
-    print(f"\nClassification complete!")
-    print(f"  Total processed: {result.get('count', 0)}")
-    print(f"  Positives (DAT events): {result.get('positives', 0)}")
-    print(f"  Classifications saved to: {result.get('saved_file', 'N/A')}")
-    
-    # Copy positive files to output directory
-    output_dir.mkdir(parents=True, exist_ok=True)
-    positives_copied = 0
-    for r in result.get("results", []):
-        if r.get("is_dat"):
-            src = input_dir / r["file"]
-            if src.exists():
-                shutil.copy2(src, output_dir / src.name)
-                positives_copied += 1
-    
-    print(f"  Positive files copied to: {output_dir}")
-    print(f"  Files copied: {positives_copied}")
-    
-    if result.get("positives", 0) > 0:
-        print(f"\nNext step: Run formatting on this directory:")
-        print(f"  python scripts/03_format.py --input-dir {output_dir}")
+    try:
+        result = classify_texts_from_dir(
+            input_dir,
+            save_jsonl=save_jsonl,
+            limit_files=limit_files,
+            workers=workers,
+        )
+        
+        logger.info(f"Classification complete:")
+        logger.info(f"  Total files: {result['count']}")
+        logger.info(f"  Positives: {result['positives']}")
+        logger.info(f"  Saved file: {result.get('saved_file', 'N/A')}")
+        
+        # Export positives if configured
+        export_positives = classify_config.get("export_positives", True)
+        if export_positives and result['positives'] > 0:
+            from pathlib import Path
+            import shutil
+            
+            positives_dir = Path(settings.positive_text_dir) / input_dir.name
+            positives_dir.mkdir(parents=True, exist_ok=True)
+            
+            copied = 0
+            for r in result.get("results", []):
+                if r.get("is_dat"):
+                    src = input_dir / r["file"]
+                    if src.exists():
+                        shutil.copy2(src, positives_dir / src.name)
+                        copied += 1
+            
+            logger.info(f"Exported {copied} positive files to {positives_dir}")
+            
+    except Exception as e:
+        logger.error(f"Classification failed: {e}", exc_info=True)
+        raise
 
 
 if __name__ == "__main__":

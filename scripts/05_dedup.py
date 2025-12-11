@@ -1,109 +1,71 @@
-#!/usr/bin/env python3
-"""Step 5: Deduplicate JSON files based on stock ticker, token, and date.
-
-Usage:
-    python scripts/05_dedup.py --input-dir DIR [--keep STRATEGY] [--remove] [--config CONFIG_FILE]
-
-Example:
-    python scripts/05_dedup.py --input-dir positive_DAT/20251120_190823Z
-    python scripts/05_dedup.py --input-dir positive_DAT/20251120_190823Z --keep largest --remove
-"""
+"""Step 5: Deduplicate JSON files."""
 from __future__ import annotations
 
 import argparse
-import os
-import sys
+import logging
 from pathlib import Path
 
-# Add parent directory to path to import app modules
-sys.path.insert(0, str(Path(__file__).parent.parent))
-
 from app.utils.dedupe import dedupe_folder
-from scripts.config_loader import get_settings_from_config
+from scripts.config_loader import load_config
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(description="Deduplicate JSON files")
-    parser.add_argument(
-        "--input-dir",
-        type=str,
-        required=True,
-        help="Directory containing .json files to deduplicate",
-    )
-    parser.add_argument(
-        "--keep",
-        type=str,
-        choices=["largest", "newest", "most_filled", "first"],
-        default="largest",
-        help="Strategy for which file to keep (default: largest)",
-    )
-    parser.add_argument(
-        "--remove",
-        action="store_true",
-        help="Delete duplicates instead of moving to _dedup_trash",
-    )
-    parser.add_argument(
-        "--dry-run",
-        action="store_true",
-        help="Only report duplicates without modifying files",
-    )
-    parser.add_argument(
-        "--require-all",
-        action="store_true",
-        default=True,
-        help="Require stock, token, and date to deduplicate (default: True)",
-    )
-    parser.add_argument(
-        "--include-related",
-        action="store_true",
-        default=True,
-        help="Also move/delete sibling files (e.g., .orig.txt) (default: True)",
-    )
-    parser.add_argument(
-        "--config",
-        type=str,
-        default=None,
-        help="Path to YAML config file (default: config.yaml or .env)",
-    )
-    
+    parser.add_argument("--input-dir", type=str, required=True, help="Directory containing .json files")
+    parser.add_argument("--keep", type=str, choices=["largest", "newest", "most_filled", "first"], 
+                       default="largest", help="Strategy for keeping files (default: largest)")
+    parser.add_argument("--remove-duplicates", action="store_true", help="Delete duplicates instead of moving to trash")
+    parser.add_argument("--no-related", action="store_true", help="Don't move/delete related files (.orig.txt, etc.)")
+    parser.add_argument("--dry-run", action="store_true", help="Only report, don't modify files")
+    parser.add_argument("--config", type=str, help="Path to config YAML file")
     args = parser.parse_args()
     
-    # Load config if provided
-    if args.config:
-        config = get_settings_from_config(args.config)
-        for key, value in config.items():
-            os.environ[key] = str(value)
+    # Load config
+    config = load_config(args.config)
+    dedup_config = config.get("dedup", {})
     
+    # Determine input directory
     input_dir = Path(args.input_dir)
     if not input_dir.exists():
-        print(f"Error: Input directory does not exist: {input_dir}")
-        sys.exit(1)
+        raise FileNotFoundError(f"Directory not found: {args.input_dir}")
     
-    print(f"Deduplicating files in: {input_dir}")
-    print(f"  Keep strategy: {args.keep}")
-    print(f"  Remove duplicates: {args.remove}")
-    print(f"  Dry run: {args.dry_run}")
+    # Get parameters
+    keep = args.keep or dedup_config.get("keep", "largest")
+    remove_duplicates = args.remove_duplicates or dedup_config.get("remove_duplicates", False)
+    include_related = not args.no_related and dedup_config.get("include_related", True)
+    dry_run = args.dry_run or dedup_config.get("dry_run", False)
+    require_all = dedup_config.get("require_all", True)
     
-    # Run deduplication
-    result = dedupe_folder(
-        input_dir,
-        keep=args.keep,
-        require_all=args.require_all,
-        remove_duplicates=args.remove,
-        include_related=args.include_related,
-        dry_run=args.dry_run,
-    )
+    logger.info(f"Deduplicating files in {input_dir}...")
+    logger.info(f"Strategy: {keep}, Remove: {remove_duplicates}, Related: {include_related}, Dry run: {dry_run}")
     
-    print(f"\nDeduplication complete!")
-    print(f"  Total files: {result.get('total_files', 0)}")
-    print(f"  Unique groups: {result.get('unique_groups', 0)}")
-    print(f"  Duplicates found: {result.get('duplicates_found', 0)}")
-    
-    if not args.dry_run:
-        print(f"  Files moved/deleted: {result.get('files_moved', 0)}")
-    
-    print(f"\nNext step: Export to CSV:")
-    print(f"  python scripts/06_export_csv.py --input-dir {input_dir}")
+    try:
+        result = dedupe_folder(
+            input_dir,
+            keep=keep,
+            require_all=require_all,
+            remove_duplicates=remove_duplicates,
+            include_related=include_related,
+            dry_run=dry_run,
+        )
+        
+        logger.info(f"Deduplication complete:")
+        logger.info(f"  Groups considered: {result['groups_considered']}")
+        logger.info(f"  Groups deduplicated: {result['groups_deduped']}")
+        logger.info(f"  Files kept: {result['kept_count']}")
+        logger.info(f"  Duplicates: {result['duplicate_count']}")
+        
+        if dry_run:
+            logger.info("  (Dry run - no files were modified)")
+        else:
+            logger.info(f"  Actions taken: {len(result['duplicate_actions'])}")
+        
+    except Exception as e:
+        logger.error(f"Deduplication failed: {e}", exc_info=True)
+        raise
 
 
 if __name__ == "__main__":

@@ -1,2 +1,2 @@
-"""Standalone scripts for Crypto Treasury Parser pipeline."""
+"""Standalone scripts for Crypto Treasury Parser."""
 

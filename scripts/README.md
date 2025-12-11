@@ -1,259 +1,293 @@
 # Standalone Scripts
 
-This directory contains standalone Python scripts that replicate the functionality of the API endpoints. These scripts can be run independently and support both YAML config files and command-line arguments.
+This directory contains standalone Python scripts that can be run independently without the FastAPI server. These scripts directly call the underlying functions from the `app` modules, making them more efficient than API wrappers.
 
-## Quick Start: Pipeline Script
+## Overview
 
-For automated end-to-end processing, use the **pipeline script** that runs all 6 steps sequentially:
+The scripts follow a 6-step pipeline:
+
+1. **01_ingest.py** - Fetch news from CryptoPanic API
+2. **02_classify.py** - Classify text files as DAT events using GPT
+3. **03_format.py** - Extract structured data from text files into JSON
+4. **04_enrich.py** - Enrich JSON files with stock and token price data
+5. **05_dedup.py** - Deduplicate JSON files
+6. **06_export_csv.py** - Combine JSON files into CSV
+
+## Quick Start
+
+### Prerequisites
+
+- Python 3.11+ with dependencies installed (`pip install -r requirements.txt`)
+- API keys configured in `.env` file:
+  - `CRYPTOPANIC_TOKEN`
+  - `OPENAI_API_KEY`
+  - `ALPHAVANTAGE_API_KEY`
+  - `COINGECKO_API_KEY`
+
+### Using the Pipeline Script (Recommended)
+
+The easiest way to run the complete pipeline:
 
 ```bash
-# Simple usage (uses defaults)
+# Simple usage (uses defaults from pipeline_config.yaml)
 python scripts/pipeline.py
 
 # With custom pipeline config
-python scripts/pipeline.py --pipeline-config pipeline_config.yaml
+python scripts/pipeline.py --pipeline-config my_pipeline_config.yaml
 
 # With both main config and pipeline config
 python scripts/pipeline.py --config config.yaml --pipeline-config pipeline_config.yaml
 ```
 
-See [Pipeline Configuration](#pipeline-configuration) below for details.
+### Running Individual Scripts
 
-## Setup
-
-1. **Install dependencies** (if not already installed):
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-2. **Create config file** (optional):
-   ```bash
-   cp config.yaml.example config.yaml
-   # Edit config.yaml with your API keys and settings
-   ```
-
-   Alternatively, you can use environment variables (`.env` file) as before.
-
-## Scripts Overview
-
-### Pipeline Script (Recommended)
-
-**`pipeline.py`** - Runs all 6 steps automatically in sequence. See [Pipeline Configuration](#pipeline-configuration) section.
-
-### Individual Scripts
-
-The individual scripts follow a pipeline workflow where each step takes the output directory from the previous step:
-
-1. **`01_ingest.py`** - Ingest news from CryptoPanic API
-2. **`02_classify.py`** - Binary classification of DAT events using GPT
-3. **`03_format.py`** - Extract structured data from text files
-4. **`04_enrich.py`** - Enrich JSON files with stock and token prices
-5. **`05_dedup.py`** - Deduplicate JSON files
-6. **`06_export_csv.py`** - Export JSON files to CSV
-
-## Usage Examples
-
-### Complete Pipeline
+You can also run each step individually:
 
 ```bash
-# Step 1: Ingest news (last 30 days)
+# Step 1: Ingest news
 python scripts/01_ingest.py --hours 720
 
-# Step 2: Classify (use output directory from step 1)
+# Step 2: Classify (after ingestion creates news_text/ directory)
 python scripts/02_classify.py --input-dir news_text/20251120_190823Z
 
-# Step 3: Format (use output directory from step 2)
+# Step 3: Format (after classification creates positive_DAT/ directory)
 python scripts/03_format.py --input-dir positive_DAT/20251120_190823Z
 
-# Step 4: Enrich (use same directory as step 3)
+# Step 4: Enrich
 python scripts/04_enrich.py --input-dir positive_DAT/20251120_190823Z
 
-# Step 5: Deduplicate (use same directory)
+# Step 5: Deduplicate
 python scripts/05_dedup.py --input-dir positive_DAT/20251120_190823Z --keep largest
 
-# Step 6: Export to CSV (use same directory)
+# Step 6: Export to CSV
 python scripts/06_export_csv.py --input-dir positive_DAT/20251120_190823Z
-```
-
-### Using Config File
-
-```bash
-# All scripts support --config flag
-python scripts/01_ingest.py --hours 24 --config config.yaml
-python scripts/02_classify.py --input-dir news_text/20251120_190823Z --config config.yaml
-```
-
-### Advanced Options
-
-```bash
-# Classify with custom worker count
-python scripts/02_classify.py --input-dir news_text/20251120_190823Z --workers 20 --limit 100
-
-# Format with limit
-python scripts/03_format.py --input-dir positive_DAT/20251120_190823Z --limit 50
-
-# Enrich with specific timestamp
-python scripts/04_enrich.py --input-dir positive_DAT/20251120_190823Z --as-of "2025-11-20T00:00:00Z"
-
-# Deduplicate with dry-run first
-python scripts/05_dedup.py --input-dir positive_DAT/20251120_190823Z --dry-run
-python scripts/05_dedup.py --input-dir positive_DAT/20251120_190823Z --keep largest --remove
-
-# Export with custom filename
-python scripts/06_export_csv.py --input-dir positive_DAT/20251120_190823Z --output-file custom_export.csv
-```
-
-## Pipeline Configuration
-
-The pipeline script uses a dedicated `pipeline_config.yaml` file (see `pipeline_config.yaml.example` for template) that allows you to configure:
-
-- **Time period** for ingestion (hours to look back)
-- **Step-specific settings** (limits, workers, deduplication strategy, etc.)
-- **Skip steps** for resuming from a specific point
-- **Continue from existing directory** to skip ingestion
-
-Example `pipeline_config.yaml`:
-
-```yaml
-ingestion:
-  hours: 720  # Last 30 days
-
-classification:
-  workers: 10
-  limit_files: null  # Process all files
-
-enrichment:
-  limit_files: null
-
-deduplication:
-  keep: "largest"
-  remove_duplicates: false
-
-export:
-  exclude_no_token: true
-```
-
-### Advanced Pipeline Features
-
-**Skip Steps**: Resume from a specific step
-```yaml
-skip_steps: [1, 2]  # Skip ingestion and classification
-```
-
-**Continue from Directory**: Skip ingestion and use existing directory
-```yaml
-continue_from_dir: "news_text/20251120_190823Z"
 ```
 
 ## Configuration
 
-### YAML Config File
+### Config Files
 
-Create `config.yaml` from `config.yaml.example`:
+1. **config.yaml** (optional) - Main configuration for individual scripts
+2. **pipeline_config.yaml** (optional) - Pipeline-specific configuration
 
-```yaml
-api_keys:
-  cryptopanic_token: "your_token_here"
-  openai_api_key: "sk-proj-..."
-  alphavantage_api_key: "your_key_here"
-  coingecko_api_key: "CG-your_pro_key_here"
+Copy the `.example` files and customize:
 
-cryptopanic:
-  base: "https://cryptopanic.com/api/growth/v2/posts/"
-  require_keyword: "treasury"  # Optional local filter
-
-openai:
-  classify_workers: 10
-
-directories:
-  news_text_dir: "news_text"
-  positive_text_dir: "positive_DAT"
+```bash
+cp config.yaml.example config.yaml
+cp pipeline_config.yaml.example pipeline_config.yaml
 ```
 
 ### Environment Variables
 
-You can still use `.env` file or environment variables. Environment variables take precedence over YAML config.
+API keys and other settings are loaded from `.env` file (see `.env.example`). The scripts use `app.config.get_settings()` which reads from environment variables.
 
 ## Script Details
 
 ### 01_ingest.py
 
-Ingests news articles from CryptoPanic API and saves them to timestamped directories.
+Fetches news articles from CryptoPanic API and saves them to `news_text/YYYYMMDD_HHMMSSZ/` directories.
 
 **Arguments:**
-- `--hours`: Number of hours to look back (1-720, default: 24)
-- `--config`: Path to YAML config file (optional)
+- `--hours` - Hours to look back (default: 24, max: 720)
+- `--config` - Path to config YAML file
 
-**Output:** `news_text/YYYYMMDD_HHMMSSZ/` directory
+**Example:**
+```bash
+python scripts/01_ingest.py --hours 168  # Last 7 days
+```
 
 ### 02_classify.py
 
-Classifies text files as DAT events using GPT. Copies positive classifications to output directory.
+Classifies text files as DAT events using GPT-4o-mini. Positive classifications are optionally exported to `positive_DAT/` directory.
 
 **Arguments:**
-- `--input-dir`: Directory containing .txt files (required)
-- `--output-dir`: Output directory (default: `positive_DAT/{input_dir_name}`)
-- `--limit`: Limit number of files to process (optional)
-- `--workers`: Number of parallel workers (optional, default: from config)
-- `--config`: Path to YAML config file (optional)
+- `--input-dir` - Directory containing .txt files (required)
+- `--limit` - Limit number of files to process
+- `--workers` - Number of parallel workers (default: from config)
+- `--no-save` - Don't save JSONL results
+- `--config` - Path to config YAML file
 
-**Output:** `positive_DAT/YYYYMMDD_HHMMSSZ/` directory with positive files
+**Example:**
+```bash
+python scripts/02_classify.py --input-dir news_text/20251120_190823Z --workers 10
+```
 
 ### 03_format.py
 
 Extracts structured data from text files into JSON format using GPT.
 
 **Arguments:**
-- `--input-dir`: Directory containing .orig.txt or .txt files (required)
-- `--limit`: Limit number of files to process (optional)
-- `--orig-only`: Only process .orig.txt files (default: True)
-- `--config`: Path to YAML config file (optional)
+- `--input-dir` - Directory containing .orig.txt files (required)
+- `--limit` - Limit number of files to process
+- `--allow-txt` - Also process .txt files (not just .orig.txt)
+- `--config` - Path to config YAML file
 
-**Output:** JSON files (`.orig.json` or `.json`) in the same directory
+**Example:**
+```bash
+python scripts/03_format.py --input-dir positive_DAT/20251120_190823Z
+```
 
 ### 04_enrich.py
 
 Enriches JSON files with stock prices (Alpha Vantage) and token prices (CoinGecko).
 
 **Arguments:**
-- `--input-dir`: Directory containing .json files (required)
-- `--limit`: Limit number of files to process (optional)
-- `--as-of`: ISO timestamp for enrichment (optional, default: now UTC)
-- `--config`: Path to YAML config file (optional)
+- `--input-dir` - Directory containing .json files (required)
+- `--limit` - Limit number of files to process
+- `--as-of` - ISO datetime string (default: now UTC)
+- `--stock-only` - Only enrich stock prices
+- `--token-only` - Only enrich token prices
+- `--config` - Path to config YAML file
 
-**Output:** Enriched JSON files (modified in-place)
+**Example:**
+```bash
+python scripts/04_enrich.py --input-dir positive_DAT/20251120_190823Z
+```
 
 ### 05_dedup.py
 
-Deduplicates JSON files based on stock ticker, token, and announcement date.
+Deduplicates JSON files based on Stock Ticker, Token, and Raise Ann. Date.
 
 **Arguments:**
-- `--input-dir`: Directory containing .json files (required)
-- `--keep`: Strategy: `largest`, `newest`, `most_filled`, or `first` (default: `largest`)
-- `--remove`: Delete duplicates instead of moving to `_dedup_trash`
-- `--dry-run`: Only report without modifying files
-- `--require-all`: Require stock, token, and date to deduplicate (default: True)
-- `--include-related`: Also move/delete sibling files (default: True)
-- `--config`: Path to YAML config file (optional)
+- `--input-dir` - Directory containing .json files (required)
+- `--keep` - Strategy: largest, newest, most_filled, first (default: largest)
+- `--remove-duplicates` - Delete duplicates instead of moving to trash
+- `--no-related` - Don't move/delete related files (.orig.txt, etc.)
+- `--dry-run` - Only report, don't modify files
+- `--config` - Path to config YAML file
 
-**Output:** Deduplicated files (duplicates moved to `_dedup_trash/` or deleted)
+**Example:**
+```bash
+python scripts/05_dedup.py --input-dir positive_DAT/20251120_190823Z --keep largest
+```
 
 ### 06_export_csv.py
 
-Exports JSON files to CSV format with URL column.
+Combines JSON files into a single CSV file with URL column.
 
 **Arguments:**
-- `--input-dir`: Directory containing .json files (required)
-- `--output-file`: Output CSV filename (optional, default: `{dir_name}_combined.csv`)
-- `--include-no-token`: Include entries where Token is N/A (default: exclude them)
-- `--config`: Path to YAML config file (optional)
+- `--input-dir` - Directory containing .json files (required)
+- `--output-file` - Output CSV filename (default: {dir_name}_combined.csv)
+- `--include-no-token` - Include entries where Token is N/A
+- `--config` - Path to config YAML file
 
-**Output:** CSV file in the input directory
+**Example:**
+```bash
+python scripts/06_export_csv.py --input-dir positive_DAT/20251120_190823Z
+```
 
-## Notes
+## Pipeline Configuration
 
-- All scripts can be run independently if you have the required input directories
-- Scripts automatically print the next step command after completion
-- Config file values are overridden by environment variables
-- Scripts use the same underlying functions as the API endpoints, ensuring consistency
+The `pipeline.py` script supports advanced configuration via `pipeline_config.yaml`:
+
+### Skipping Steps
+
+To resume from a specific step:
+
+```yaml
+pipeline:
+  skip_steps: [ingest, classify]  # Skip ingestion and classification
+```
+
+### Continuing from Existing Directory
+
+To continue processing an existing directory:
+
+```yaml
+pipeline:
+  continue_from_dir: "positive_DAT/20251120_190823Z"
+  skip_steps: [ingest, classify]
+```
+
+### Step-Specific Settings
+
+Each step can be configured independently:
+
+```yaml
+ingest:
+  hours: 720  # 30 days
+
+classify:
+  workers: 10  # More parallel workers
+
+enrich:
+  enrich_stock: true
+  enrich_token: true
+
+dedup:
+  keep: largest
+  remove_duplicates: false
+```
+
+## Differences from API Endpoints
+
+These scripts **directly import and call** the underlying functions:
+
+- ✅ No HTTP overhead
+- ✅ No API server required
+- ✅ Better error handling (exceptions instead of HTTP status codes)
+- ✅ Faster execution
+- ✅ Can be integrated into other Python workflows
+
+The underlying functions are:
+- `app.ingest.cryptopanic.ingest_cryptopanic()`
+- `app.analyze.gpt.classify_texts_from_dir()`
+- `app.analyze.gpt.format_texts_from_dir()`
+- `app.enrich.alpha.enrich_folder_with_alpha()`
+- `app.enrich.coingecko.enrich_folder_with_coingecko()`
+- `app.utils.dedupe.dedupe_folder()`
+
+## Troubleshooting
+
+### Import Errors
+
+Make sure you're running scripts from the project root:
+
+```bash
+# Correct
+python scripts/01_ingest.py
+
+# Wrong
+cd scripts && python 01_ingest.py
+```
+
+### API Key Errors
+
+Ensure your `.env` file is configured correctly and contains all required API keys.
+
+### File Not Found Errors
+
+Make sure the input directories exist. The scripts will try to find directories relative to configured base paths, but you may need to provide full paths.
+
+## Examples
+
+### Full Pipeline Run
+
+```bash
+# Run complete pipeline with default settings
+python scripts/pipeline.py
+
+# Run with custom time range (30 days)
+# Edit pipeline_config.yaml: ingest.hours = 720
+python scripts/pipeline.py
+```
+
+### Resuming from Enrichment
+
+```bash
+# Edit pipeline_config.yaml:
+# pipeline.skip_steps = [ingest, classify, format]
+# pipeline.continue_from_dir = "positive_DAT/20251120_190823Z"
+
+python scripts/pipeline.py
+```
+
+### Processing Specific Directory
+
+```bash
+# Process a specific directory through remaining steps
+python scripts/04_enrich.py --input-dir positive_DAT/20251120_190823Z
+python scripts/05_dedup.py --input-dir positive_DAT/20251120_190823Z
+python scripts/06_export_csv.py --input-dir positive_DAT/20251120_190823Z
+```
 

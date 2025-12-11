@@ -1,105 +1,99 @@
-#!/usr/bin/env python3
-"""Step 4: Enrich JSON files with stock and token price data.
-
-Usage:
-    python scripts/04_enrich.py --input-dir DIR [--limit LIMIT] [--config CONFIG_FILE]
-
-Example:
-    python scripts/04_enrich.py --input-dir positive_DAT/20251120_190823Z
-    python scripts/04_enrich.py --input-dir positive_DAT/20251120_190823Z --limit 50
-"""
+"""Step 4: Enrich JSON files with stock and token price data."""
 from __future__ import annotations
 
 import argparse
 import asyncio
-import os
-import sys
+import logging
+from datetime import datetime, timezone
 from pathlib import Path
-
-# Add parent directory to path to import app modules
-sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from app.enrich.alpha import enrich_folder_with_alpha
 from app.enrich.coingecko import enrich_folder_with_coingecko
-from scripts.config_loader import get_settings_from_config
+from scripts.config_loader import load_config
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 
-def main():
+async def main() -> None:
     parser = argparse.ArgumentParser(description="Enrich JSON files with price data")
-    parser.add_argument(
-        "--input-dir",
-        type=str,
-        required=True,
-        help="Directory containing .json files to enrich",
-    )
-    parser.add_argument(
-        "--limit",
-        type=int,
-        default=None,
-        help="Limit number of files to process",
-    )
-    parser.add_argument(
-        "--as-of",
-        type=str,
-        default=None,
-        help="ISO timestamp for enrichment (default: now UTC)",
-    )
-    parser.add_argument(
-        "--config",
-        type=str,
-        default=None,
-        help="Path to YAML config file (default: config.yaml or .env)",
-    )
-    
+    parser.add_argument("--input-dir", type=str, required=True, help="Directory containing .json files")
+    parser.add_argument("--limit", type=int, help="Limit number of files to process")
+    parser.add_argument("--as-of", type=str, help="ISO datetime string (default: now UTC)")
+    parser.add_argument("--stock-only", action="store_true", help="Only enrich stock prices")
+    parser.add_argument("--token-only", action="store_true", help="Only enrich token prices")
+    parser.add_argument("--config", type=str, help="Path to config YAML file")
     args = parser.parse_args()
     
-    # Load config if provided
-    if args.config:
-        config = get_settings_from_config(args.config)
-        for key, value in config.items():
-            os.environ[key] = str(value)
+    # Load config
+    config = load_config(args.config)
+    enrich_config = config.get("enrich", {})
     
+    # Determine input directory
     input_dir = Path(args.input_dir)
     if not input_dir.exists():
-        print(f"Error: Input directory does not exist: {input_dir}")
-        sys.exit(1)
+        raise FileNotFoundError(f"Directory not found: {args.input_dir}")
     
-    # Parse as_of timestamp if provided
-    as_of_dt = None
+    # Parse as_of datetime
+    as_of = None
     if args.as_of:
         try:
-            from datetime import datetime, timezone
-            as_of_dt = datetime.fromisoformat(args.as_of.replace("Z", "+00:00"))
-            if as_of_dt.tzinfo is None:
-                as_of_dt = as_of_dt.replace(tzinfo=timezone.utc)
+            as_of = datetime.fromisoformat(args.as_of.replace("Z", "+00:00"))
+            if as_of.tzinfo is None:
+                as_of = as_of.replace(tzinfo=timezone.utc)
         except Exception as e:
-            print(f"Error: Invalid as-of timestamp: {e}")
-            sys.exit(1)
+            raise ValueError(f"Invalid as_of format: {e}")
+    elif enrich_config.get("as_of"):
+        try:
+            as_of = datetime.fromisoformat(enrich_config["as_of"].replace("Z", "+00:00"))
+            if as_of.tzinfo is None:
+                as_of = as_of.replace(tzinfo=timezone.utc)
+        except Exception:
+            pass
     
-    print(f"Enriching files in: {input_dir}")
+    # Get limit
+    limit_files = args.limit or enrich_config.get("limit_files")
     
-    # Run enrichment (both stock and token)
-    async def run_enrichment():
-        print("\nEnriching with Alpha Vantage (stocks)...")
-        stock_result = await enrich_folder_with_alpha(input_dir, as_of=as_of_dt, limit_files=args.limit)
-        print(f"  Stock enrichment complete: {stock_result.get('processed', 0)} files processed")
+    # Determine what to enrich
+    enrich_stock = not args.token_only
+    enrich_token = not args.stock_only
+    
+    logger.info(f"Enriching files in {input_dir}...")
+    logger.info(f"Limit: {limit_files}, As of: {as_of or 'now'}")
+    logger.info(f"Enrich stock: {enrich_stock}, Enrich token: {enrich_token}")
+    
+    try:
+        results = {}
         
-        print("\nEnriching with CoinGecko (tokens)...")
-        token_result = await enrich_folder_with_coingecko(input_dir, as_of=as_of_dt, limit_files=args.limit)
-        print(f"  Token enrichment complete: {token_result.get('processed', 0)} files processed")
+        # Enrich stocks
+        if enrich_stock:
+            logger.info("Enriching stock prices with Alpha Vantage...")
+            stock_result = await enrich_folder_with_alpha(
+                input_dir,
+                as_of=as_of,
+                limit_files=limit_files,
+            )
+            results["stocks"] = stock_result
+            logger.info(f"Stock enrichment: {stock_result.get('saved', 0)} saved, {stock_result.get('skipped', 0)} skipped")
         
-        return {"stocks": stock_result, "tokens": token_result}
-    
-    result = asyncio.run(run_enrichment())
-    
-    print(f"\nEnrichment complete!")
-    print(f"  Stock files processed: {result['stocks'].get('processed', 0)}")
-    print(f"  Token files processed: {result['tokens'].get('processed', 0)}")
-    
-    print(f"\nNext step: Run deduplication on this directory:")
-    print(f"  python scripts/05_dedup.py --input-dir {input_dir}")
+        # Enrich tokens
+        if enrich_token:
+            logger.info("Enriching token prices with CoinGecko...")
+            token_result = await enrich_folder_with_coingecko(
+                input_dir,
+                as_of=as_of,
+                limit_files=limit_files,
+            )
+            results["tokens"] = token_result
+            logger.info(f"Token enrichment: {token_result.get('saved', 0)} saved, {token_result.get('skipped', 0)} skipped")
+        
+        logger.info("Enrichment complete!")
+        
+    except Exception as e:
+        logger.error(f"Enrichment failed: {e}", exc_info=True)
+        raise
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
 

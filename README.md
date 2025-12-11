@@ -60,7 +60,7 @@ The API will be available at `http://localhost:8000`
 
 ## Standalone Scripts
 
-For command-line usage without running the API server, see the [scripts/](scripts/) directory. The scripts support YAML config files and can be run independently.
+For command-line usage **without running the API server**, see the [scripts/](scripts/) directory. The scripts **directly call the underlying functions** from the `app` modules (no HTTP/API overhead), making them faster and more efficient.
 
 ### Pipeline Script (Recommended)
 
@@ -72,9 +72,6 @@ python scripts/pipeline.py
 
 # With custom pipeline config
 python scripts/pipeline.py --pipeline-config pipeline_config.yaml
-
-# With both main config and pipeline config
-python scripts/pipeline.py --config config.yaml --pipeline-config pipeline_config.yaml
 ```
 
 Create `pipeline_config.yaml` from `pipeline_config.yaml.example` to customize:
@@ -96,6 +93,19 @@ python scripts/04_enrich.py --input-dir positive_DAT/20251120_190823Z
 python scripts/05_dedup.py --input-dir positive_DAT/20251120_190823Z
 python scripts/06_export_csv.py --input-dir positive_DAT/20251120_190823Z
 ```
+
+**Key Benefits:**
+- ✅ **No API server required** - scripts run standalone
+- ✅ **Faster execution** - direct function calls, no HTTP overhead
+- ✅ **Better error handling** - exceptions instead of HTTP status codes
+- ✅ **More flexible** - can be integrated into other Python workflows
+
+The scripts directly import and call:
+- `app.ingest.cryptopanic.ingest_cryptopanic()`
+- `app.analyze.gpt.classify_texts_from_dir()` / `format_texts_from_dir()`
+- `app.enrich.alpha.enrich_folder_with_alpha()`
+- `app.enrich.coingecko.enrich_folder_with_coingecko()`
+- `app.utils.dedupe.dedupe_folder()`
 
 See [scripts/README.md](scripts/README.md) for detailed documentation.
 
